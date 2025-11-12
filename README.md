@@ -1,3 +1,1 @@
-# Getting started
-
-Small tool created to practice pick/ban phases for Clash.
+Testing small tool to practice pick/ban phases for Clash.
