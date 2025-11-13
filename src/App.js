@@ -6,6 +6,7 @@ const App = () => {
   const [characters, setCharacters] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [gameVersion, setGameVersion] = useState('');
 
   // Track which character is currently selected
   const [selectedChar, setSelectedChar] = useState(null);
@@ -27,6 +28,7 @@ const App = () => {
         const versionResponse = await fetch('https://ddragon.leagueoflegends.com/api/versions.json');
         const versions = await versionResponse.json();
         const latestVersion = versions[0];
+        setGameVersion(latestVersion);
 
         // Then fetch all champion data
         const champResponse = await fetch(
@@ -39,7 +41,8 @@ const App = () => {
           .map(champ => ({
             id: champ.key,
             name: champ.name,
-            title: champ.title
+            title: champ.title,
+            imageId: champ.id // This is the ID used in image URLs
           }))
           .sort((a, b) => a.name.localeCompare(b.name));
 
@@ -109,10 +112,14 @@ const App = () => {
         onClick={() => handleSlotClick(slotId)}
         onContextMenu={(e) => handleSlotRightClick(e, slotId)}
         className={`slot ${assignedChar ? 'slot-filled' : 'slot-empty'}`}
-        title={assignedChar ? "Click to remove" : "Click to assign"}
+        title={assignedChar ? `${assignedChar.name} - Click to remove` : "Click to assign"}
       >
         {assignedChar ? (
-          <span className="slot-text">{assignedChar.name}</span>
+          <img 
+            src={`https://ddragon.leagueoflegends.com/cdn/${gameVersion}/img/champion/${assignedChar.imageId}.png`}
+            alt={assignedChar.name}
+            className="slot-icon"
+          />
         ) : (
           <span className="slot-placeholder">Empty</span>
         )}
@@ -131,10 +138,14 @@ const App = () => {
         onClick={() => handleBanClick(banId)}
         onContextMenu={(e) => handleBanRightClick(e, banId)}
         className={`ban ${bannedChar ? 'ban-filled' : 'ban-empty'}`}
-        title={bannedChar ? "Click to remove" : "Click to ban"}
+        title={bannedChar ? `${bannedChar.name} - Click to remove` : "Click to ban"}
       >
         {bannedChar ? (
-          <span className="ban-text">{bannedChar.name}</span>
+          <img 
+            src={`https://ddragon.leagueoflegends.com/cdn/${gameVersion}/img/champion/${bannedChar.imageId}.png`}
+            alt={bannedChar.name}
+            className="ban-icon"
+          />
         ) : (
           <span className="ban-placeholder">Ban</span>
         )}
@@ -144,7 +155,7 @@ const App = () => {
 
   return (
     <div className="app-container">
-      <h1 className="app-title">League of Legends Champion Slots</h1>
+      <h1 className="app-title">Drafting Tool</h1>
       
       {loading ? (
         <div className="loading">Loading champions...</div>
@@ -176,7 +187,7 @@ const App = () => {
           <div className="main-layout">
         {/* Left Slots */}
         <div className="slot-column">
-          <h2 className="column-title">Left Side</h2>
+          <h2 className="column-title">Blue Side</h2>
           {[0, 1, 2, 3, 4].map(i => renderSlot('left', i))}
         </div>
 
@@ -191,9 +202,13 @@ const App = () => {
                 className={`character-button ${
                   selectedChar?.id === char.id ? 'character-selected' : ''
                 }`}
-                title={char.title}
+                title={`${char.name} - ${char.title}`}
               >
-                {char.name}
+                <img 
+                  src={`https://ddragon.leagueoflegends.com/cdn/${gameVersion}/img/champion/${char.imageId}.png`}
+                  alt={char.name}
+                  className="champion-icon"
+                />
               </button>
             ))}
           </div>
@@ -201,7 +216,7 @@ const App = () => {
 
         {/* Right Slots */}
         <div className="slot-column">
-          <h2 className="column-title">Right Side</h2>
+          <h2 className="column-title">Red Side</h2>
           {[0, 1, 2, 3, 4].map(i => renderSlot('right', i))}
         </div>
       </div>
