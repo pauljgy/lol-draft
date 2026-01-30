@@ -1,240 +1,177 @@
 import React, { useState, useEffect } from 'react';
 import './App.css';
 
+const BAN_SLOTS = 5;
+const PICK_SLOTS = 5;
+
 const App = () => {
-  // Track all champions fetched from Riot API
-  const [characters, setCharacters] = useState([]);
+  const [champions, setChampions] = useState([]);
+  const [gameVersion, setGameVersion] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [gameVersion, setGameVersion] = useState('');
+  const [selectedId, setSelectedId] = useState(null);
 
-  // Track which character is currently selected
-  const [selectedChar, setSelectedChar] = useState(null);
-  
-  // Track which characters are in which slots
-  // Format: { 'left-0': 1, 'right-2': 3 } means character 1 in left slot 0, etc.
-  const [slots, setSlots] = useState({});
-  
-  // Track which characters are banned
-  // Format: { 'ban-left-0': 1, 'ban-right-2': 3 }
+  // Slot keys: 'blue-ban-0'..'blue-ban-4', 'blue-pick-0'..'blue-pick-4', same for red
   const [bans, setBans] = useState({});
+  const [picks, setPicks] = useState({});
 
-  // Fetch champions from Riot Data Dragon API
   useEffect(() => {
     const fetchChampions = async () => {
       try {
         setLoading(true);
-        // First, get the latest version
-        const versionResponse = await fetch('https://ddragon.leagueoflegends.com/api/versions.json');
-        const versions = await versionResponse.json();
-        const latestVersion = versions[0];
-        setGameVersion(latestVersion);
+        const versionRes = await fetch('https://ddragon.leagueoflegends.com/api/versions.json');
+        const [version] = await versionRes.json();
+        setGameVersion(version);
 
-        // Then fetch all champion data
-        const champResponse = await fetch(
-          `https://ddragon.leagueoflegends.com/cdn/${latestVersion}/data/en_US/champion.json`
+        const champRes = await fetch(
+          `https://ddragon.leagueoflegends.com/cdn/${version}/data/en_US/champion.json`
         );
-        const champData = await champResponse.json();
-
-        // Convert to our format and sort alphabetically
-        const champList = Object.values(champData.data)
-          .map(champ => ({
-            id: champ.key,
-            name: champ.name,
-            title: champ.title,
-            imageId: champ.id // This is the ID used in image URLs
-          }))
+        const { data } = await champRes.json();
+        const list = Object.values(data)
+          .map((c) => ({ id: c.id, key: c.key, name: c.name }))
           .sort((a, b) => a.name.localeCompare(b.name));
-
-        setCharacters(champList);
-        setLoading(false);
+        setChampions(list);
       } catch (err) {
-        setError('Failed to load champions. Please refresh the page.');
+        setError('Failed to load champions. Refresh the page.');
+      } finally {
         setLoading(false);
       }
     };
-
     fetchChampions();
   }, []);
 
-  const handleCharacterClick = (char) => {
-    setSelectedChar(char);
+  const imageUrl = (imageId) =>
+    gameVersion
+      ? `https://ddragon.leagueoflegends.com/cdn/${gameVersion}/img/champion/${imageId}.png`
+      : '';
+
+  const getChamp = (id) => champions.find((c) => c.id === id);
+
+  const isPickedOrBanned = (id) => {
+    const all = { ...bans, ...picks };
+    return Object.values(all).includes(id);
   };
 
-  const handleSlotClick = (slotId) => {
-    // If slot is already filled, remove it
-    if (slots[slotId]) {
-      const newSlots = { ...slots };
-      delete newSlots[slotId];
-      setSlots(newSlots);
-    } else if (selectedChar) {
-      // If slot is empty and we have a selection, assign it
-      setSlots({ ...slots, [slotId]: selectedChar.id });
-      setSelectedChar(null); // Deselect after assigning
+  const assignToSlot = (slotKey, isBan) => {
+    if (!selectedId) return;
+    const setter = isBan ? setBans : setPicks;
+    const state = isBan ? bans : picks;
+    if (state[slotKey] === selectedId) {
+      const next = { ...state };
+      delete next[slotKey];
+      setter(next);
+    } else {
+      setter({ ...state, [slotKey]: selectedId });
     }
+    setSelectedId(null);
   };
 
-  const handleSlotRightClick = (e, slotId) => {
-    e.preventDefault(); // Prevent context menu
-    const newSlots = { ...slots };
-    delete newSlots[slotId];
-    setSlots(newSlots);
+  const clearSlot = (e, slotKey, isBan) => {
+    e.preventDefault();
+    const setter = isBan ? setBans : setPicks;
+    const state = isBan ? bans : picks;
+    if (!state[slotKey]) return;
+    const next = { ...state };
+    delete next[slotKey];
+    setter(next);
   };
 
-  const handleBanClick = (banId) => {
-    // If ban is already filled, remove it
-    if (bans[banId]) {
-      const newBans = { ...bans };
-      delete newBans[banId];
-      setBans(newBans);
-    } else if (selectedChar) {
-      // If ban is empty and we have a selection, assign it
-      setBans({ ...bans, [banId]: selectedChar.id });
-      setSelectedChar(null); // Deselect after assigning
-    }
-  };
-
-  const handleBanRightClick = (e, banId) => {
-    e.preventDefault(); // Prevent context menu
-    const newBans = { ...bans };
-    delete newBans[banId];
-    setBans(newBans);
-  };
-
-  const renderSlot = (side, index) => {
-    const slotId = `${side}-${index}`;
-    const assignedCharId = slots[slotId];
-    const assignedChar = characters.find(c => c.id === assignedCharId);
+  const renderBank = (side, isBan) => {
+    const prefix = isBan ? `${side}-ban` : `${side}-pick`;
+    const state = isBan ? bans : picks;
+    const label = isBan ? 'Bans' : 'Picks';
 
     return (
-      <div
-        key={slotId}
-        onClick={() => handleSlotClick(slotId)}
-        onContextMenu={(e) => handleSlotRightClick(e, slotId)}
-        className={`slot ${assignedChar ? 'slot-filled' : 'slot-empty'}`}
-        title={assignedChar ? `${assignedChar.name} - Click to remove` : "Click to assign"}
-      >
-        {assignedChar ? (
-          <img 
-            src={`https://ddragon.leagueoflegends.com/cdn/${gameVersion}/img/champion/${assignedChar.imageId}.png`}
-            alt={assignedChar.name}
-            className="slot-icon"
-          />
-        ) : (
-          <span className="slot-placeholder">Empty</span>
-        )}
+      <div className={`bank bank-${side} bank-${isBan ? 'bans' : 'picks'}`}>
+        <div className="bank-label">{side === 'blue' ? 'Blue' : 'Red'} {label}</div>
+        <div className="bank-slots">
+          {Array.from({ length: isBan ? BAN_SLOTS : PICK_SLOTS }, (_, i) => {
+            const slotKey = `${prefix}-${i}`;
+            const champId = state[slotKey];
+            const champ = getChamp(champId);
+            return (
+              <div
+                key={slotKey}
+                className={`slot ${isBan ? 'slot-ban' : 'slot-pick'} ${champ ? 'filled' : 'empty'}`}
+                onClick={() => assignToSlot(slotKey, isBan)}
+                onContextMenu={(e) => clearSlot(e, slotKey, isBan)}
+                title={champ ? `${champ.name} – click to change, right‑click to clear` : 'Click to assign'}
+              >
+                {champ ? (
+                  <img src={imageUrl(champ.id)} alt={champ.name} className="slot-img" />
+                ) : (
+                  <span className="slot-placeholder">{isBan ? 'Ban' : 'Pick'}</span>
+                )}
+              </div>
+            );
+          })}
+        </div>
       </div>
     );
   };
 
-  const renderBan = (side, index) => {
-    const banId = `ban-${side}-${index}`;
-    const bannedCharId = bans[banId];
-    const bannedChar = characters.find(c => c.id === bannedCharId);
-
+  if (loading) {
     return (
-      <div
-        key={banId}
-        onClick={() => handleBanClick(banId)}
-        onContextMenu={(e) => handleBanRightClick(e, banId)}
-        className={`ban ${bannedChar ? 'ban-filled' : 'ban-empty'}`}
-        title={bannedChar ? `${bannedChar.name} - Click to remove` : "Click to ban"}
-      >
-        {bannedChar ? (
-          <img 
-            src={`https://ddragon.leagueoflegends.com/cdn/${gameVersion}/img/champion/${bannedChar.imageId}.png`}
-            alt={bannedChar.name}
-            className="ban-icon"
-          />
-        ) : (
-          <span className="ban-placeholder">Ban</span>
-        )}
+      <div className="app">
+        <div className="loading">Loading champions…</div>
       </div>
     );
-  };
+  }
+
+  if (error) {
+    return (
+      <div className="app">
+        <div className="error">{error}</div>
+      </div>
+    );
+  }
 
   return (
-    <div className="app-container">
-      <h1 className="app-title">Drafting Tool</h1>
-      
-      {loading ? (
-        <div className="loading">Loading champions...</div>
-      ) : error ? (
-        <div className="error">{error}</div>
-      ) : (
-        <>
-          {/* Ban Section */}
-          <div className="ban-section">
-            <h2 className="section-title">Bans</h2>
-            <div className="ban-layout">
-              <div className="ban-side">
-                <h3 className="ban-side-title">Blue Side Bans</h3>
-                <div className="ban-row">
-                  {[0, 1, 2, 3, 4].map(i => renderBan('left', i))}
-                </div>
-              </div>
-              <div className="ban-side">
-                <h3 className="ban-side-title">Red Side Bans</h3>
-                <div className="ban-row">
-                  {[0, 1, 2, 3, 4].map(i => renderBan('right', i))}
-                </div>
-              </div>
-            </div>
-          </div>
+    <div className="app">
+      <header className="header">
+        <h1>LoL Draft Practice</h1>
+        <p className="subtitle">Select a champion, then click a slot to ban or pick. Right‑click a slot to clear.</p>
+      </header>
 
-          {/* Picks Section */}
-          <h2 className="section-title">Picks</h2>
-          <div className="main-layout">
-        {/* Left Slots */}
-        <div className="slot-column">
-          <h2 className="column-title">Blue Side</h2>
-          {[0, 1, 2, 3, 4].map(i => renderSlot('left', i))}
+      <div className="draft-layout">
+        {/* Left: Blue team banks */}
+        <div className="side-banks side-blue">
+          {renderBank('blue', true)}
+          {renderBank('blue', false)}
         </div>
 
-        {/* Characters in the middle */}
-        <div className="character-panel">
-          <h2 className="panel-title">Champions ({characters.length})</h2>
-          <div className="character-list">
-            {characters.map(char => (
-              <button
-                key={char.id}
-                onClick={() => handleCharacterClick(char)}
-                className={`character-button ${
-                  selectedChar?.id === char.id ? 'character-selected' : ''
-                }`}
-                title={`${char.name} - ${char.title}`}
-              >
-                <img 
-                  src={`https://ddragon.leagueoflegends.com/cdn/${gameVersion}/img/champion/${char.imageId}.png`}
-                  alt={char.name}
-                  className="champion-icon"
-                />
-              </button>
-            ))}
+        {/* Center: Champion pool */}
+        <div className="pool-wrap">
+          <div className="pool-label">Champion pool</div>
+          <div className="pool">
+            {champions.map((c) => {
+              const used = isPickedOrBanned(c.id);
+              const selected = selectedId === c.id;
+              return (
+                <button
+                  key={c.id}
+                  type="button"
+                  className={`champ-btn ${selected ? 'selected' : ''} ${used ? 'used' : ''}`}
+                  onClick={() => setSelectedId(selected ? null : c.id)}
+                  disabled={used}
+                  title={used ? `${c.name} (picked or banned)` : c.name}
+                >
+                  <img src={imageUrl(c.id)} alt={c.name} className="champ-img" />
+                </button>
+              );
+            })}
           </div>
+          {selectedId && (
+            <div className="selected-hint">Selected: {getChamp(selectedId)?.name}</div>
+          )}
         </div>
 
-        {/* Right Slots */}
-        <div className="slot-column">
-          <h2 className="column-title">Red Side</h2>
-          {[0, 1, 2, 3, 4].map(i => renderSlot('right', i))}
+        {/* Right: Red team banks */}
+        <div className="side-banks side-red">
+          {renderBank('red', true)}
+          {renderBank('red', false)}
         </div>
       </div>
-
-      {/* Instructions */}
-      <div className="instructions">
-        <p className="instructions-title">How to use:</p>
-        <p>1. Click a champion to select it</p>
-        <p>2. Click an empty slot to assign the champion</p>
-        <p>3. Click a filled slot to remove the champion</p>
-        {selectedChar && (
-          <p className="selected-info">
-            Currently selected: {selectedChar.name}
-          </p>
-        )}
-      </div>
-      </>
-      )}
     </div>
   );
 };
